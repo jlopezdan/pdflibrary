@@ -12,14 +12,10 @@ DEFAULT_DIRECTORY = os.path.abspath(os.environ.get("PDF_SCAN_DIR", os.getcwd()))
 # Allowed extensions for the scanner
 SUPPORTED_EXTENSIONS = {'.pdf'}
 
-# Simple in-memory database to store custom user edits/metadata (notes and tags)
-# Key: relative_path, Value: {"tags": "...", "notes": "..."}
-DOCUMENT_METADATA_STORE = {}
-
 def scan_pdf_directory(base_dir):
     """
     Scans a given target directory recursively for PDF files.
-    Combines file system metadata with custom user annotations from DOCUMENT_METADATA_STORE.
+    Returns a list of structured dictionaries containing file details.
     """
     pdf_files = []
     id_counter = 1
@@ -37,9 +33,6 @@ def scan_pdf_directory(base_dir):
                         file_stat = os.stat(full_path)
                         relative_path = os.path.relpath(full_path, base_dir)
                         
-                        # Fetch custom user metadata if it exists
-                        meta = DOCUMENT_METADATA_STORE.get(relative_path, {"tags": "", "notes": ""})
-                        
                         pdf_files.append({
                             "id": id_counter,
                             "name": file,
@@ -47,9 +40,7 @@ def scan_pdf_directory(base_dir):
                             "size_bytes": file_stat.st_size,
                             "size_mb": round(file_stat.st_size / (1024 * 1024), 2),
                             "modified_time": file_stat.st_mtime,
-                            "folder": os.path.basename(root) if root != base_dir else "Root",
-                            "tags": meta["tags"],
-                            "notes": meta["notes"]
+                            "folder": os.path.basename(root) if root != base_dir else "Root"
                         })
                         id_counter += 1
                     except (OSError, PermissionError):
@@ -78,7 +69,7 @@ INDEX_TEMPLATE = """
 
     <!-- Header Navigation Bar -->
     <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div class="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -98,57 +89,57 @@ INDEX_TEMPLATE = """
         </div>
     </header>
 
-    <!-- Main Grid Content Area -->
-    <main class="flex-1 max-w-[90rem] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col lg:flex-row gap-6">
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row gap-6">
         
         <!-- Left Column: Settings, Search controls, Filter and Sidebar Stats -->
-        <div class="w-full lg:w-72 flex-shrink-0 space-y-6">
+        <div class="w-full md:w-80 flex-shrink-0 space-y-6">
             
             <!-- Base Directory Configuration Card -->
-            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Scan Settings</h2>
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Scan Settings</h2>
                 <div>
                     <label for="directory-input" class="block text-xs font-medium text-gray-500 mb-1">Base Directory Path</label>
                     <div class="flex gap-2">
-                        <input type="text" id="directory-input" value="{{ default_dir }}" placeholder="Target path..." class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition">
-                        <button onclick="updateDirectory()" class="px-2.5 py-1.5 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition">Set</button>
+                        <input type="text" id="directory-input" value="{{ default_dir }}" placeholder="Target path..." class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition">
+                        <button onclick="updateDirectory()" class="px-3 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition">Set</button>
                     </div>
                     <p id="directory-status" class="text-xs mt-1 text-gray-400 truncate">Using system target root</p>
                 </div>
             </div>
 
             <!-- Search & Filters -->
-            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Search & Filters</h2>
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Search & Filters</h2>
                 <div>
                     <label for="search-input" class="block text-xs font-medium text-gray-500 mb-1">Filename Search</label>
-                    <input type="text" id="search-input" oninput="filterLibrary()" placeholder="Type to filter..." class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition">
+                    <input type="text" id="search-input" oninput="filterLibrary()" placeholder="Type to filter..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition">
                 </div>
                 <div>
                     <label for="folder-filter" class="block text-xs font-medium text-gray-500 mb-1">Subfolder Filter</label>
-                    <select id="folder-filter" onchange="filterLibrary()" class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition">
+                    <select id="folder-filter" onchange="filterLibrary()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition">
                         <option value="ALL">All Directories</option>
                     </select>
                 </div>
             </div>
 
             <!-- Summary Operational Cards -->
-            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Library Summary</h2>
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Library Summary</h2>
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-gray-50 p-3 rounded-lg text-center">
-                        <span class="block text-xl font-bold text-gray-900" id="stat-count">0</span>
-                        <span class="text-[10px] uppercase text-gray-400 font-medium">Total PDFs</span>
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <span class="block text-2xl font-bold text-gray-900" id="stat-count">0</span>
+                        <span class="text-xs text-gray-500">Total PDFs</span>
                     </div>
-                    <div class="bg-gray-50 p-3 rounded-lg text-center">
-                        <span class="block text-md font-bold text-gray-900 truncate mt-1" id="stat-size">0 MB</span>
-                        <span class="text-[10px] uppercase text-gray-400 font-medium">Volume</span>
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <span class="block text-xl font-bold text-gray-900 truncate" id="stat-size">0 MB</span>
+                        <span class="text-xs text-gray-500">Total Volume</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Center Column: Main Document Table List -->
+        <!-- Right Column: Document Grid Table List -->
         <div class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
             <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
                 <h3 class="font-semibold text-gray-800">Scanned Documents</h3>
@@ -179,55 +170,6 @@ INDEX_TEMPLATE = """
                 </div>
             </div>
         </div>
-
-        <!-- Right Column: Document Details & Metadata Edit Canvas -->
-        <div id="edit-canvas-panel" class="w-full lg:w-80 flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-            <div class="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <h3 class="font-semibold text-gray-800 text-sm tracking-wide">Edit Metadata Canvas</h3>
-                <span id="canvas-active-badge" class="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">No Selection</span>
-            </div>
-            
-            <!-- Context Window Body -->
-            <div id="canvas-empty-view" class="flex-1 flex flex-col items-center justify-center p-6 text-center text-gray-400">
-                <svg class="w-10 h-10 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                </svg>
-                <p class="text-xs">Select any document file and click <span class="font-semibold text-gray-600">Edit</span> to manage tags and properties in this canvas workspace.</p>
-            </div>
-
-            <div id="canvas-form-view" class="hidden flex-1 flex flex-col p-5 space-y-4 overflow-y-auto">
-                <div>
-                    <span class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">File Name</span>
-                    <p id="canvas-doc-name" class="text-sm font-semibold text-gray-900 break-all"></p>
-                </div>
-
-                <div>
-                    <span class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Relative Path</span>
-                    <p id="canvas-doc-path" class="text-xs font-mono text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 break-all select-all"></p>
-                </div>
-
-                <!-- Custom Interactive Tags Input Box -->
-                <div>
-                    <label for="canvas-input-tags" class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Document Tags</label>
-                    <input type="text" id="canvas-input-tags" placeholder="e.g. Invoice, Q3, Manual" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition">
-                </div>
-
-                <!-- Custom Notes Context Workspace -->
-                <div class="flex-1 flex flex-col min-h-[120px]">
-                    <label for="canvas-input-notes" class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">File Notes / Summaries</label>
-                    <textarea id="canvas-input-notes" placeholder="Enter annotations or metadata notes here..." class="w-full flex-1 p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition"></textarea>
-                </div>
-
-                <div class="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
-                    <button onclick="saveCanvasChanges()" class="flex-1 px-4 py-2 bg-blue-600 text-white font-medium text-xs rounded-lg hover:bg-blue-700 transition shadow-sm">
-                        Save Metadata
-                    </button>
-                    <button onclick="clearCanvasSelection()" class="px-3 py-2 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50 transition">
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
     </main>
 
     <!-- Interactive PDF Presentation Modal Frame Viewer -->
@@ -255,7 +197,6 @@ INDEX_TEMPLATE = """
     <script>
         let cachedDocuments = [];
         let currentTargetDir = "{{ default_dir }}";
-        let activeCanvasPath = null;
 
         async function fetchPDFs() {
             const statusLabel = document.getElementById('directory-status');
@@ -277,16 +218,6 @@ INDEX_TEMPLATE = """
                 populateFilters();
                 filterLibrary();
                 updateSystemStats();
-                
-                // If editing an item that got refreshed, reload its properties
-                if (activeCanvasPath) {
-                    const activeItem = cachedDocuments.find(d => d.relative_path === activeCanvasPath);
-                    if (activeItem) {
-                        openEditCanvas(activeItem.relative_path);
-                    } else {
-                        clearCanvasSelection();
-                    }
-                }
             } catch (err) {
                 console.error("Scanning synchronization failure:", err);
                 statusLabel.textContent = "Directory error / not found";
@@ -298,7 +229,6 @@ INDEX_TEMPLATE = """
                 emptyStateText.textContent = err.message;
                 document.getElementById('empty-state').classList.remove('hidden');
                 updateSystemStats();
-                clearCanvasSelection();
             }
         }
 
@@ -341,8 +271,7 @@ INDEX_TEMPLATE = """
             const emptyStateText = document.getElementById('empty-state-text');
 
             const subset = cachedDocuments.filter(doc => {
-                const textPool = `${doc.name} ${doc.relative_path} ${doc.tags} ${doc.notes}`.toLowerCase();
-                const matchesQuery = textPool.includes(query);
+                const matchesQuery = doc.name.toLowerCase().includes(query) || doc.relative_path.toLowerCase().includes(query);
                 const matchesFolder = (chosenFolder === 'ALL' || doc.folder === chosenFolder);
                 return matchesQuery && matchesFolder;
             });
@@ -359,13 +288,10 @@ INDEX_TEMPLATE = """
 
             subset.forEach(doc => {
                 const row = document.createElement('tr');
-                row.className = `hover:bg-gray-50 transition ${activeCanvasPath === doc.relative_path ? 'bg-blue-50/70 hover:bg-blue-50' : ''}`;
+                row.className = "hover:bg-gray-50 transition";
                 row.innerHTML = `
                     <td class="px-6 py-4 max-w-xs md:max-w-md truncate">
-                        <div class="font-medium text-gray-900 truncate flex items-center gap-1.5" title="${doc.name}">
-                            ${doc.name}
-                            ${doc.tags ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 max-w-[80px] truncate">${doc.tags}</span>` : ''}
-                        </div>
+                        <div class="font-medium text-gray-900 truncate" title="${doc.name}">${doc.name}</div>
                         <div class="text-xs text-gray-400 font-mono truncate" title="${doc.relative_path}">${doc.relative_path}</div>
                     </td>
                     <td class="px-6 py-4 hidden sm:table-cell text-gray-500 whitespace-nowrap">
@@ -374,14 +300,11 @@ INDEX_TEMPLATE = """
                         </span>
                     </td>
                     <td class="px-6 py-4 text-gray-500 whitespace-nowrap">${doc.size_mb} MB</td>
-                    <td class="px-6 py-4 text-right space-x-1 whitespace-nowrap">
-                        <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-blue-600 hover:text-blue-900 text-xs font-semibold px-2 py-1.5 rounded-md hover:bg-blue-50 transition">
+                    <td class="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                        <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-blue-600 hover:text-blue-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition">
                             View
                         </button>
-                        <button onclick="openEditCanvas('${encodeURIComponent(doc.relative_path)}')" class="text-amber-600 hover:text-amber-900 text-xs font-semibold px-2 py-1.5 rounded-md hover:bg-amber-50 transition">
-                            Edit
-                        </button>
-                        <a href="/api/view?dir=${encodeURIComponent(currentTargetDir)}&path=${encodeURIComponent(doc.relative_path)}" target="_blank" download class="text-gray-600 hover:text-gray-900 text-xs font-semibold px-2 py-1.5 rounded-md hover:bg-gray-100 transition">
+                        <a href="/api/view?dir=${encodeURIComponent(currentTargetDir)}&path=${encodeURIComponent(doc.relative_path)}" target="_blank" download class="text-gray-600 hover:text-gray-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-gray-100 transition">
                             Download
                         </a>
                     </td>
@@ -390,68 +313,6 @@ INDEX_TEMPLATE = """
             });
         }
 
-        // --- Side Canvas Operation Logic ---
-        function openEditCanvas(encodedPath) {
-            const decodedPath = decodeURIComponent(encodedPath);
-            const doc = cachedDocuments.find(d => d.relative_path === decodedPath);
-            if (!doc) return;
-
-            activeCanvasPath = doc.relative_path;
-
-            // UI Elements state adjustments
-            document.getElementById('canvas-active-badge').textContent = "Active File";
-            document.getElementById('canvas-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full";
-            
-            document.getElementById('canvas-doc-name').textContent = doc.name;
-            document.getElementById('canvas-doc-path').textContent = doc.relative_path;
-            document.getElementById('canvas-input-tags').value = doc.tags || "";
-            document.getElementById('canvas-input-notes').value = doc.notes || "";
-
-            document.getElementById('canvas-empty-view').classList.add('hidden');
-            document.getElementById('canvas-form-view').classList.remove('hidden');
-            
-            // Re-render table lists to reflect active highlight selection
-            filterLibrary();
-        }
-
-        function clearCanvasSelection() {
-            activeCanvasPath = null;
-            document.getElementById('canvas-active-badge').textContent = "No Selection";
-            document.getElementById('canvas-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full";
-            
-            document.getElementById('canvas-empty-view').classList.remove('hidden');
-            document.getElementById('canvas-form-view').classList.add('hidden');
-            filterLibrary();
-        }
-
-        async function saveCanvasChanges() {
-            if (!activeCanvasPath) return;
-
-            const tagsVal = document.getElementById('canvas-input-tags').value.trim();
-            const notesVal = document.getElementById('canvas-input-notes').value.trim();
-
-            try {
-                const response = await fetch('/api/metadata/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        relative_path: activeCanvasPath,
-                        tags: tagsVal,
-                        notes: notesVal
-                    })
-                });
-
-                if (!response.ok) throw new Error("Metadata save rejection.");
-                
-                // Trigger refresh scan sync across global frontend cached state matrix
-                fetchPDFs();
-            } catch (err) {
-                console.error("Error committing annotation canvas state data:", err);
-                alert("Failed to preserve structural metadata attributes.");
-            }
-        }
-
-        // --- Standard View Modal Controls ---
         function launchPreview(encodedPath) {
             const decodedPath = decodeURIComponent(encodedPath);
             const fileName = decodedPath.split('/').pop();
@@ -491,30 +352,19 @@ def route_api_get_documents():
         
     return jsonify({"files": files, "error": None})
 
-@app.route('/api/metadata/save', methods=['POST'])
-def route_api_save_metadata():
-    """Preserves user edit canvas tags and annotations into the database module."""
-    data = request.get_json() or {}
-    relative_path = data.get('relative_path')
-    
-    if not relative_path:
-        return jsonify({"success": False, "error": "Missing target file validation path"}), 400
-        
-    DOCUMENT_METADATA_STORE[relative_path] = {
-        "tags": data.get('tags', ''),
-        "notes": data.get('notes', '')
-    }
-    return jsonify({"success": True, "error": None})
-
 @app.route('/api/view')
 def route_api_serve_pdf():
-    """Safely serves isolated PDF binaries within directory bounds constraints."""
+    """
+    Safely resolves, maps, and serves individual PDF binary objects 
+    relative to the dynamically passed base directory parameter.
+    """
     base_dir = request.args.get('dir', DEFAULT_DIRECTORY)
     relative_target_path = request.args.get('path', '')
     
     base_dir = os.path.abspath(base_dir)
     safe_path = os.path.normpath(os.path.join(base_dir, relative_target_path))
     
+    # Path security validation: block path traversal outside of the target base folder
     if not safe_path.startswith(base_dir):
         abort(403, "Access to requested path resource is restricted.")
         
