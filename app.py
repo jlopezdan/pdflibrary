@@ -1,342 +1,347 @@
 import os
-import json
-import urllib.parse
-from flask import Flask, render_template_string, jsonify, request, send_from_directory, abort
+import sys
+import mimetypes
+from flask import Flask, render_template_string, jsonify, request, send_file, abort
 
+# Initialize Flask application
 app = Flask(__name__)
 
-# Global application state tracking local directory and the generated file dictionary
-APPLICATION_STATE = {
-    "target_directory": "",
-    "pdf_library_dict": {}
-}
+# Configure the target directory to scan (Defaults to the current working directory)
+TARGET_DIRECTORY = os.path.abspath(os.environ.get("PDF_SCAN_DIR", os.getcwd()))
 
-# Integrated frontend user interface template with responsive grid cards and client-side PDF.js worker rendering
-HTML_TEMPLATE = """
+# Allowed extensions for the scanner
+SUPPORTED_EXTENSIONS = {'.pdf'}
+
+def scan_pdf_directory(base_dir):
+    """
+    Scans the target directory recursively for PDF files and extracts basic file system metadata.
+    Returns a list of structured dictionaries containing file details.
+    """
+    pdf_files = []
+    id_counter = 1
+    
+    if not os.path.exists(base_dir):
+        return pdf_files
+
+    for root, _, files in os.walk(base_dir):
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in SUPPORTED_EXTENSIONS:
+                full_path = os.path.join(root, file)
+                try:
+                    file_stat = os.stat(full_path)
+                    relative_path = os.path.relpath(full_path, base_dir)
+                    
+                    pdf_files.append({
+                        "id": id_counter,
+                        "name": file,
+                        "relative_path": relative_path,
+                        "size_bytes": file_stat.st_size,
+                        "size_mb": round(file_stat.st_size / (1024 * 1024), 2),
+                        "modified_time": file_stat.st_mtime,
+                        "folder": os.path.basename(root) if root != base_dir else "Root"
+                    })
+                    id_counter += 1
+                except (OSError, PermissionError):
+                    # Skip files that cannot be accessed due to permission or system errors
+                    continue
+                    
+    # Sort files by modification time descending by default
+    pdf_files.sort(key=lambda x: x["modified_time"], reverse=True)
+    return pdf_files
+
+# --- HTML/CSS/JS Frontend Interface (Tailwind CSS UI) ---
+INDEX_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web PDF Library Viewer with Thumbnails</title>
+    <title>PDF Web Scanner Dashboard</title>
+    <!-- Approved External Tailwind CSS Resource -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans min-h-screen">
+<body class="bg-gray-50 text-gray-900 flex flex-col min-h-screen">
 
-    <!-- Header Navigation Section -->
-    <header class="bg-slate-900 text-white shadow-md p-4">
-        <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold tracking-tight">📁 Local PDF Library Visual Scanner</h1>
-            <span class="text-xs bg-blue-600 px-3 py-1 rounded text-white font-medium">PDF.js Thumbnail Mode</span>
+    <!-- Header Navigation Bar -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <!-- Inline SVG Icon for Brand -->
+                <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                <div>
+                    <h1 class="text-lg font-bold text-gray-900 tracking-tight">PDF Web Scanner</h1>
+                    <p class="text-xs text-gray-500 truncate max-w-md">Scanning: <span class="font-mono text-gray-700 bg-gray-100 px-1 py-0.5 rounded">{{ target_dir }}</span></p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button onclick="fetchPDFs()" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18"></path>
+                    </svg>
+                    Refresh Scan
+                </button>
+            </div>
         </div>
     </header>
 
-    <main class="container mx-auto p-4 max-w-7xl">
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row gap-6">
         
-        <!-- Target Folder Path Input and Actions Control Panel -->
-        <section class="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 class="text-lg font-semibold mb-3 text-slate-700">Configure Local Storage Target</h2>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <input type="text" id="dirPathInput" 
-                       class="flex-1 border border-gray-300 rounded px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                       placeholder="Provide an absolute file directory string (e.g., E:\\MyPDFs or C:\\Users\\Name\\Documents)"
-                       value="{{ current_path }}">
+        <!-- Left Column: Search controls, Filter and Sidebar Stats -->
+        <div class="w-full md:w-80 flex-shrink-0 space-y-6">
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Search & Filters</h2>
                 
-                <div class="flex gap-2">
-                    <button onclick="initializeLibrary()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium transition shadow-sm">
-                        Set & Scan
-                    </button>
-                    <button onclick="triggerRescan()" id="rescanBtn" 
-                            class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded font-medium transition shadow-sm {% if not current_path %}opacity-50 cursor-not-allowed{% endif %}"
-                            {% if not current_path %}disabled{% endif %}>
-                        🔄 Re-Scan
-                    </button>
+                <!-- Search Input Field -->
+                <div>
+                    <label for="search-input" class="block text-xs font-medium text-gray-500 mb-1">Filename Search</label>
+                    <div class="relative">
+                        <input type="text" id="search-input" oninput="filterLibrary()" placeholder="Type to filter documents..." class="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                    </div>
+                </div>
+
+                <!-- Folder Filter Selection -->
+                <div>
+                    <label for="folder-filter" class="block text-xs font-medium text-gray-500 mb-1">Subfolder Filter</label>
+                    <select id="folder-filter" onchange="filterLibrary()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition">
+                        <option value="ALL">All Directories</option>
+                    </select>
                 </div>
             </div>
-            <p id="statusMsg" class="mt-3 text-sm text-slate-500 italic">
-                {% if current_path %}Monitoring active path structures: {{ current_path }}{% else %}Ready for indexing configurations.{% endif %}
-            </p>
-        </section>
 
-        <!-- Dynamic Grid Content Split Layout -->
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            
-            <!-- Left Grid Panel: Interactive Library Grid Folders -->
-            <section class="lg:col-span-3 bg-white rounded-lg shadow p-6">
-                <div class="mb-4 border-b pb-2 flex justify-between items-center">
-                    <h2 class="text-lg font-semibold text-slate-700">Library Folders</h2>
-                    <span class="text-xs text-slate-400">💡 Click any preview card to open the file</span>
+            <!-- Summary Operational Cards -->
+            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Library Summary</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <span class="block text-2xl font-bold text-gray-900" id="stat-count">0</span>
+                        <span class="text-xs text-gray-500">Total PDFs</span>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <span class="block text-xl font-bold text-gray-900 truncate" id="stat-size">0 MB</span>
+                        <span class="text-xs text-gray-500">Total Volume</span>
+                    </div>
                 </div>
-                <div id="treeContainer" class="space-y-4 overflow-y-auto max-h-[650px] pr-2">
-                    <p class="text-gray-400 italic text-sm">Provide valid targeting addresses above to build visual workspace indexes.</p>
+            </div>
+        </div>
+
+        <!-- Right Column: Document Grid Table List -->
+        <div class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                <h3 class="font-semibold text-gray-800">Scanned Documents</h3>
+                <span class="text-xs font-medium px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full" id="showing-count">Showing 0 documents</span>
+            </div>
+
+            <!-- Document List View Container -->
+            <div class="flex-1 overflow-y-auto max-h-[calc(100vh-16rem)]">
+                <table class="min-w-full divide-y divide-gray-200 text-left text-sm">
+                    <thead class="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
+                        <tr>
+                            <th class="px-6 py-3 font-medium">Document Name</th>
+                            <th class="px-6 py-3 font-medium hidden sm:table-cell">Subfolder</th>
+                            <th class="px-6 py-3 font-medium">Size</th>
+                            <th class="px-6 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="document-table-body" class="divide-y divide-gray-200 bg-white">
+                        <!-- Items rendered via JavaScript -->
+                    </tbody>
+                </table>
+                
+                <!-- State Message Box -->
+                <div id="empty-state" class="hidden text-center py-12 px-4">
+                    <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2 2H6a2 2 0 01-2-2m16 0V9a2 2 0 00-2-2H6a2 2 0 00-2 2v4.586a1 1 0 01-.293.707l-2.828 2.828a1 1 0 01-.707.293H2"></path>
+                    </svg>
+                    <p class="text-gray-500 text-sm">No PDF files found matching your active criteria.</p>
                 </div>
-            </section>
-            
-            <!-- Right Grid Panel: Raw Metadata Live Dictionary Output -->
-            <section class="lg:col-span-2 bg-white rounded-lg shadow p-6">
-                <h2 class="text-lg font-semibold mb-4 text-slate-700 border-b pb-2">Structured Dictionary Representation</h2>
-                <div class="relative">
-                    <pre id="jsonViewer" class="bg-slate-900 text-emerald-400 p-4 rounded text-xs font-mono overflow-auto max-h-[650px] min-h-[200px]">{}</pre>
-                </div>
-            </section>
-            
+            </div>
         </div>
     </main>
 
-    <!-- Browser Runtime Scripts Layer -->
+    <!-- Interactive PDF Presentation Modal Frame Viewer -->
+    <div id="preview-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    <h3 id="modal-title" class="font-semibold text-gray-800 truncate max-w-xl">Document Viewer</h3>
+                </div>
+                <button onclick="closePreview()" class="text-gray-400 hover:text-gray-600 transition focus:outline-none p-1.5 hover:bg-gray-100 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="flex-1 bg-gray-100 relative">
+                <iframe id="preview-iframe" class="w-full h-full border-none bg-gray-200" src=""></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Initialization and Logic Client Script -->
     <script>
-        // Attach secure background worker thread link for the PDF library
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        let cachedDocuments = [];
 
-        document.addEventListener("DOMContentLoaded", () => {
-            fetchLibraryData();
-        });
-
-        async function fetchLibraryData() {
+        async function fetchPDFs() {
             try {
-                const response = await fetch('/api/library');
-                const data = await response.json();
+                const response = await fetch('/api/documents');
+                if (!response.ok) throw new Error("Failed to scan directory records.");
                 
-                if (data.target_directory) {
-                    updateTreeDOM(data.pdf_library_dict);
-                    document.getElementById('jsonViewer').textContent = JSON.stringify(data.pdf_library_dict, null, 4);
-                    document.getElementById('rescanBtn').disabled = false;
-                    document.getElementById('rescanBtn').classList.remove('opacity-50', 'cursor-not-allowed');
-                }
+                cachedDocuments = await response.json();
+                populateFilters();
+                filterLibrary();
+                updateSystemStats();
             } catch (err) {
-                console.error("Internal service request failure:", err);
+                console.error("Scanning synchronization failure:", err);
             }
         }
 
-        async function initializeLibrary() {
-            const pathValue = document.getElementById('dirPathInput').value.trim();
-            if (!pathValue) {
-                alert("Please enter a valid directory target path layout.");
-                return;
-            }
-            updateStatus("Mapping specified directories and validating dependencies...", "text-blue-600");
-            try {
-                const response = await fetch('/api/set-directory', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ directory: pathValue })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    updateStatus(`Scan complete. Synced ${result.total_pdfs} PDF files securely. Generating cover previews...`, "text-emerald-600");
-                    await fetchLibraryData();
-                } else {
-                    updateStatus(`Error mapping tracks: ${result.error}`, "text-red-600");
-                }
-            } catch (err) {
-                updateStatus("System synchronization failure timeout.", "text-red-600");
-            }
-        }
+        function populateFilters() {
+            const folderFilterSelect = document.getElementById('folder-filter');
+            const uniqueFolders = new Set();
+            
+            cachedDocuments.forEach(doc => {
+                if (doc.folder) uniqueFolders.add(doc.folder);
+            });
 
-        async function triggerRescan() {
-            updateStatus("Analyzing directory paths to reconcile modifications...", "text-blue-600");
-            try {
-                const response = await fetch('/api/rescan', { method: 'POST' });
-                const result = await response.json();
-                if (result.success) {
-                    updateStatus(`Reconciliation complete. Total files online: ${result.total_pdfs}. Regenerating previews...`, "text-emerald-600");
-                    await fetchLibraryData();
-                } else {
-                    updateStatus(`Re-indexing workflow suspended: ${result.error}`, "text-red-600");
-                }
-            } catch (err) {
-                updateStatus("Communication error while processing hardware scan arrays.", "text-red-600");
-            }
-        }
-
-        function updateTreeDOM(libraryData) {
-            const container = document.getElementById('treeContainer');
-            container.innerHTML = '';
-            const folders = Object.keys(libraryData);
-            if (folders.length === 0) {
-                container.innerHTML = '<p class="text-gray-400 italic text-sm">No documents found matching scanning requirements.</p>';
-                return;
-            }
-            folders.forEach(folder => {
-                const folderBox = document.createElement('div');
-                folderBox.className = "border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white";
-
-                const header = document.createElement('div');
-                header.className = "bg-slate-100 px-4 py-3 flex justify-between items-center font-semibold text-slate-700 text-sm border-b border-gray-200 cursor-pointer hover:bg-slate-200 transition select-none";
-                header.innerHTML = `<span>📁 ${folder}</span><span class="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full font-bold">${libraryData[folder].length} PDFs</span>`;
-                
-                const gridContainer = document.createElement('div');
-                gridContainer.className = "p-4 bg-gray-50 grid grid-cols-2 sm:grid-cols-3 gap-4 transition-all duration-300";
-                
-                libraryData[folder].forEach((pdfFile, idx) => {
-                    const encodedFolder = encodeURIComponent(folder);
-                    const encodedFile = encodeURIComponent(pdfFile);
-                    const targetUrl = `/view-pdf?folder=${encodedFolder}&file=${encodedFile}`;
-                    
-                    const card = document.createElement('div');
-                    card.className = "bg-white rounded border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-400 transition overflow-hidden flex flex-col justify-between group";
-                    const canvasId = `canvas-${folder.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}`;
-                    
-                    card.innerHTML = `
-                        <a href="${targetUrl}" target="_blank" class="flex flex-col h-full">
-                            <div class="bg-slate-200 aspect-[3/4] flex items-center justify-center relative overflow-hidden border-b border-gray-100">
-                                <canvas id="${canvasId}" class="w-full h-full object-cover hidden"></canvas>
-                                <div id="loader-${canvasId}" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-xs gap-2 p-2 text-center animate-pulse">
-                                    <span class="text-xl">📄</span>
-                                    <span class="text-[10px] truncate w-full">Loading preview...</span>
-                                </div>
-                            </div>
-                            <div class="p-2 bg-white flex-1 flex flex-col justify-between">
-                                <p class="text-[11px] font-mono text-slate-700 line-clamp-2 word-break leading-tight font-semibold" title="${pdfFile}">
-                                    ${pdfFile}
-                                </p>
-                                <span class="text-[9px] text-blue-500 font-medium mt-1 self-start group-hover:underline">Open Document ↗</span>
-                            </div>
-                        </a>
-                    `;
-                    gridContainer.appendChild(card);
-                    renderPDFThumbnail(targetUrl, canvasId);
-                });
-
-                header.onclick = () => gridContainer.classList.toggle('hidden');
-                folderBox.appendChild(header);
-                folderBox.appendChild(gridContainer);
-                container.appendChild(folderBox);
+            // Retain the structural "All" initialization option
+            folderFilterSelect.innerHTML = '<option value="ALL">All Directories</option>';
+            
+            Array.from(uniqueFolders).sort().forEach(folderName => {
+                const opt = document.createElement('option');
+                opt.value = folderName;
+                opt.textContent = folderName;
+                folderFilterSelect.appendChild(opt);
             });
         }
 
-        async function renderPDFThumbnail(pdfUrl, canvasId) {
-            try {
-                const loadingTask = pdfjsLib.getDocument(pdfUrl);
-                const pdf = await loadingTask.promise;
-                const page = await pdf.getPage(1);
-                
-                const canvas = document.getElementById(canvasId);
-                const loader = document.getElementById(`loader-${canvasId}`);
-                if (!canvas) return;
-                
-                const context = canvas.getContext('2d');
-                const viewport = page.getViewport({ scale: 0.4 });
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                
-                const renderContext = { canvasContext: context, viewport: viewport };
-                await page.render(renderContext).promise;
-                
-                canvas.classList.remove('hidden');
-                if (loader) loader.classList.add('hidden');
-            } catch (err) {
-                console.error("Thumbnail capture error:", err);
-                const loader = document.getElementById(`loader-${canvasId}`);
-                if (loader) {
-                    loader.innerHTML = '<span class="text-red-400 text-sm">⚠️</span><span class="text-[9px] text-red-400">Preview error</span>';
-                    loader.classList.remove('animate-pulse');
-                }
-            }
+        function updateSystemStats() {
+            document.getElementById('stat-count').textContent = cachedDocuments.length;
+            const totalSize = cachedDocuments.reduce((sum, item) => sum + item.size_mb, 0);
+            document.getElementById('stat-size').textContent = totalSize.toFixed(2) + " MB";
         }
 
-        function updateStatus(text, colorClass) {
-            const el = document.getElementById('statusMsg');
-            el.className = `mt-3 text-sm italic ${colorClass}`;
-            el.textContent = text;
+        function filterLibrary() {
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            const chosenFolder = document.getElementById('folder-filter').value;
+            const tableBody = document.getElementById('document-table-body');
+            const emptyState = document.getElementById('empty-state');
+
+            const subset = cachedDocuments.filter(doc => {
+                const matchesQuery = doc.name.toLowerCase().includes(query) || doc.relative_path.toLowerCase().includes(query);
+                const matchesFolder = (chosenFolder === 'ALL' || doc.folder === chosenFolder);
+                return matchesQuery && matchesFolder;
+            });
+
+            document.getElementById('showing-count').textContent = `Showing ${subset.length} documents`;
+            tableBody.innerHTML = '';
+
+            if (subset.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            subset.forEach(doc => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-gray-50 transition";
+                row.innerHTML = `
+                    <td class="px-6 py-4 max-w-xs md:max-w-md truncate">
+                        <div class="font-medium text-gray-900 truncate" title="${doc.name}">${doc.name}</div>
+                        <div class="text-xs text-gray-400 font-mono truncate" title="${doc.relative_path}">${doc.relative_path}</div>
+                    </td>
+                    <td class="px-6 py-4 hidden sm:table-cell text-gray-500 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                            ${doc.folder}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-gray-500 whitespace-nowrap">${doc.size_mb} MB</td>
+                    <td class="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                        <button onclick="launchPreview(${doc.id}, '${encodeURIComponent(doc.relative_path)}')" class="text-blue-600 hover:text-blue-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition">
+                            View
+                        </button>
+                        <a href="/api/view/${encodeURIComponent(doc.relative_path)}" target="_blank" download class="text-gray-600 hover:text-gray-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-gray-100 transition">
+                            Download
+                        </a>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
         }
+
+        function launchPreview(id, encodedPath) {
+            const decodedPath = decodeURIComponent(encodedPath);
+            const fileName = decodedPath.split('/').pop();
+            document.getElementById('modal-title').textContent = fileName;
+            
+            // Reference endpoint stream directly to browser iframe capability
+            document.getElementById('preview-iframe').src = `/api/view/${encodedPath}#toolbar=1`;
+            document.getElementById('preview-modal').classList.remove('hidden');
+        }
+
+        function closePreview() {
+            document.getElementById('preview-modal').classList.add('hidden');
+            document.getElementById('preview-iframe').src = '';
+        }
+
+        // Run direct fetch action mapping standard workspace sequence window loading execution
+        window.addEventListener('DOMContentLoaded', fetchPDFs);
     </script>
 </body>
 </html>
 """
 
-def scan_local_filesystem(target_path):
-    """Deep searches the specified path for matching files and builds a structural index map configuration."""
-    normalized_path = os.path.normpath(target_path)
-    if not os.path.exists(normalized_path) or not os.path.isdir(normalized_path):
-        raise ValueError("Target folder path is invalid or cannot be reached by server processes.")
-
-    new_library_dict = {}
-    total_pdfs = 0
-
-    for root, dirs, files in os.walk(normalized_path):
-        pdf_files = [f for f in files if f.lower().endswith('.pdf')]
-        if pdf_files:
-            relative_dir = os.path.relpath(root, normalized_path)
-            dict_key = "Root Folder" if relative_dir == "." else relative_dir
-            new_library_dict[dict_key] = sorted(pdf_files)
-            total_pdfs += len(pdf_files)
-
-    return new_library_dict, total_pdfs
+# --- API Endpoint Matrix Configurations ---
 
 @app.route('/')
-def index_view():
-    """Serves the central layout structure."""
-    return render_template_string(HTML_TEMPLATE, current_path=APPLICATION_STATE["target_directory"])
+def route_dashboard_index():
+    """Serves the central web application UI container."""
+    return render_template_string(INDEX_TEMPLATE, target_dir=TARGET_DIRECTORY)
 
-@app.route('/api/library', methods=['GET'])
-def get_library_api():
-    """Exposes internal database parameters."""
-    return jsonify(APPLICATION_STATE)
+@app.route('/api/documents')
+def route_api_get_documents():
+    """Exposes structured metadata array of scanned records."""
+    records = scan_pdf_directory(TARGET_DIRECTORY)
+    return jsonify(records)
 
-@app.route('/api/set-directory', methods=['POST'])
-def set_directory_api():
-    """Switches operational targets dynamically on demand."""
-    data = request.get_json() or {}
-    directory_input = data.get('directory', '').strip()
+@app.route('/api/view/<path:relative_target_path>')
+def route_api_serve_pdf(relative_target_path):
+    """
+    Safely resolves, maps, and serves individual PDF binary objects 
+    ensuring directory traversal constraints remain strictly bounded.
+    """
+    safe_path = os.path.normpath(os.path.join(TARGET_DIRECTORY, relative_target_path))
+    
+    # Path security validation: block external relative directory access attempts
+    if not safe_path.startswith(TARGET_DIRECTORY):
+        abort(403, "Access to requested path resource is restricted.")
+        
+    if not os.path.exists(safe_path) or os.path.isdir(safe_path):
+        abort(404, "Target document resource could not be found.")
 
-    if not directory_input:
-        return jsonify({"success": False, "error": "Target configuration paths are missing."}), 400
+    # Determine asset MIME type context dynamically
+    mime_type, _ = mimetypes.guess_type(safe_path)
+    if not mime_type or mime_type != 'application/pdf':
+        mime_type = 'application/pdf'
 
-    try:
-        pdf_map, count = scan_local_filesystem(directory_input)
-        APPLICATION_STATE["target_directory"] = os.path.normpath(directory_input)
-        APPLICATION_STATE["pdf_library_dict"] = pdf_map
-        return jsonify({"success": True, "total_pdfs": count})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
-
-@app.route('/api/rescan', methods=['POST'])
-def rescan_api():
-    """Forces background reconciliation updates on current paths."""
-    current_dir = APPLICATION_STATE["target_directory"]
-    if not current_dir:
-        return jsonify({"success": False, "error": "No monitored path tracks mapped yet."}), 400
-
-    try:
-        pdf_map, count = scan_local_filesystem(current_dir)
-        APPLICATION_STATE["pdf_library_dict"] = pdf_map
-        return jsonify({"success": True, "total_pdfs": count})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
-
-@app.route('/view-pdf', methods=['GET'])
-def view_pdf_handler():
-    """Securely authenticates tracking boundaries and streams the requested PDF resource natively."""
-    base_root = APPLICATION_STATE["target_directory"]
-    if not base_root:
-        return abort(400, description="Tracking paths are unconfigured.")
-
-    req_folder = request.args.get('folder', '')
-    req_file = request.args.get('file', '')
-
-    if not req_folder or not req_file:
-        return abort(400, description="Missing path lookup index elements.")
-
-    if req_folder == "Root Folder":
-        target_dir_path = base_root
-    else:
-        target_dir_path = os.path.normpath(os.path.join(base_root, req_folder))
-
-    if not target_dir_path.startswith(base_root):
-        return abort(403, description="Access denied: outside application workspace root context.")
-
-    full_file_path = os.path.join(target_dir_path, req_file)
-    if not os.path.exists(full_file_path):
-        return abort(404, description="Target asset could not be located on disk array paths.")
-
-    return send_from_directory(
-        directory=target_dir_path,
-        path=req_file,
-        mimetype='application/pdf'
-    )
+    return send_file(safe_path, mimetype=mime_type)
 
 if __name__ == '__main__':
-    print("Application Server running. Navigate to http://127.0.0.1:5000 in your web browser.")
+    print(f"[*] Starting Local Web Document Server...")
+    print(f"[*] Directory Context Path: {TARGET_DIRECTORY}")
+    print(f"[*] Serving locally at: http://127.0.0.1:5000")
+    
+    # Execute application engine locally
     app.run(host='127.0.0.1', port=5000, debug=True)
