@@ -300,13 +300,10 @@ INDEX_TEMPLATE = """
                         </span>
                     </td>
                     <td class="px-6 py-4 text-gray-500 whitespace-nowrap">${doc.size_mb} MB</td>
-                    <td class="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                    <td class="px-6 py-4 text-right whitespace-nowrap">
                         <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-blue-600 hover:text-blue-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition">
                             View
                         </button>
-                        <a href="/api/view?dir=${encodeURIComponent(currentTargetDir)}&path=${encodeURIComponent(doc.relative_path)}" target="_blank" download class="text-gray-600 hover:text-gray-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-gray-100 transition">
-                            Download
-                        </a>
                     </td>
                 `;
                 tableBody.appendChild(row);
