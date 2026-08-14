@@ -244,17 +244,17 @@ INDEX_TEMPLATE = """
         </div>
     </main>
 
-    <!-- Interactive PDF Presentation Modal Frame Viewer -->
-    <div id="preview-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
-            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+    <!-- Interactive Full-Screen PDF Presentation Modal Frame Viewer -->
+    <div id="preview-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="bg-white w-full h-full flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between shadow-sm">
                 <div class="flex items-center space-x-2">
                     <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                     </svg>
-                    <h3 id="modal-title" class="font-semibold text-gray-800 truncate max-w-xl">Document Viewer</h3>
+                    <h3 id="modal-title" class="font-semibold text-gray-800 truncate max-w-2xl">Document Viewer</h3>
                 </div>
-                <button onclick="closePreview()" class="text-gray-400 hover:text-gray-600 transition p-1.5 hover:bg-gray-100 rounded-lg">
+                <button onclick="closePreview()" class="text-gray-400 hover:text-gray-600 transition p-1.5 hover:bg-gray-100 rounded-lg focus:outline-none">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>
