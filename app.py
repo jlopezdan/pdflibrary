@@ -61,6 +61,8 @@ INDEX_TEMPLATE = """
     <title>PDF Web Scanner Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Whitelisted Cloudflare resource for secure client-side PDF canvas rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
@@ -69,7 +71,7 @@ INDEX_TEMPLATE = """
 
     <!-- Header Navigation Bar -->
     <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -89,57 +91,57 @@ INDEX_TEMPLATE = """
         </div>
     </header>
 
-    <!-- Main Content Area -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row gap-6">
+    <!-- Main Content Area Container -->
+    <main class="flex-1 max-w-[90rem] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col lg:flex-row gap-6">
         
         <!-- Left Column: Settings, Search controls, Filter and Sidebar Stats -->
-        <div class="w-full md:w-80 flex-shrink-0 space-y-6">
+        <div class="w-full lg:w-72 flex-shrink-0 space-y-6">
             
             <!-- Base Directory Configuration Card -->
-            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Scan Settings</h2>
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Scan Settings</h2>
                 <div>
                     <label for="directory-input" class="block text-xs font-medium text-gray-500 mb-1">Base Directory Path</label>
                     <div class="flex gap-2">
-                        <input type="text" id="directory-input" value="{{ default_dir }}" placeholder="Target path..." class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition">
-                        <button onclick="updateDirectory()" class="px-3 py-2 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition">Set</button>
+                        <input type="text" id="directory-input" value="{{ default_dir }}" placeholder="Target path..." class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition">
+                        <button onclick="updateDirectory()" class="px-2.5 py-1.5 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition">Set</button>
                     </div>
                     <p id="directory-status" class="text-xs mt-1 text-gray-400 truncate">Using system target root</p>
                 </div>
             </div>
 
             <!-- Search & Filters -->
-            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Search & Filters</h2>
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Search & Filters</h2>
                 <div>
                     <label for="search-input" class="block text-xs font-medium text-gray-500 mb-1">Filename Search</label>
-                    <input type="text" id="search-input" oninput="filterLibrary()" placeholder="Type to filter..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition">
+                    <input type="text" id="search-input" oninput="filterLibrary()" placeholder="Type to filter..." class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition">
                 </div>
                 <div>
                     <label for="folder-filter" class="block text-xs font-medium text-gray-500 mb-1">Subfolder Filter</label>
-                    <select id="folder-filter" onchange="filterLibrary()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition">
+                    <select id="folder-filter" onchange="filterLibrary()" class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition">
                         <option value="ALL">All Directories</option>
                     </select>
                 </div>
             </div>
 
             <!-- Summary Operational Cards -->
-            <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Library Summary</h2>
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Library Summary</h2>
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-gray-50 p-4 rounded-lg text-center">
-                        <span class="block text-2xl font-bold text-gray-900" id="stat-count">0</span>
-                        <span class="text-xs text-gray-500">Total PDFs</span>
+                    <div class="bg-gray-50 p-3 rounded-lg text-center">
+                        <span class="block text-xl font-bold text-gray-900" id="stat-count">0</span>
+                        <span class="text-[10px] text-gray-400 uppercase font-medium">Total PDFs</span>
                     </div>
-                    <div class="bg-gray-50 p-4 rounded-lg text-center">
-                        <span class="block text-xl font-bold text-gray-900 truncate" id="stat-size">0 MB</span>
-                        <span class="text-xs text-gray-500">Total Volume</span>
+                    <div class="bg-gray-50 p-3 rounded-lg text-center">
+                        <span class="block text-md font-bold text-gray-900 truncate mt-1" id="stat-size">0 MB</span>
+                        <span class="text-[10px] text-gray-400 uppercase font-medium">Volume</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Right Column: Document Grid Table List -->
+        <!-- Center Column: Document Grid Table List -->
         <div class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
             <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
                 <h3 class="font-semibold text-gray-800">Scanned Documents</h3>
@@ -163,10 +165,50 @@ INDEX_TEMPLATE = """
                 
                 <div id="empty-state" class="hidden text-center py-12 px-4">
                     <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2 2H6a2 2 0 01-2-2m16 0V9a2 2 0 00-2-2H6a2 2 0 00-2 2v4.586a1 1 0 01-.293.707l-2.828 2.828a1 1 0 01-.707.293H2"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2-2H6a2 2 0 01-2-2m16 0V9a2 2 0 00-2-2H6a2 2 0 00-2 2v4.586a1 1 0 01-.293.707l-2.828 2.828a1 1 0 01-.707.293H2"></path>
                     </svg>
                     <p id="empty-state-text" class="text-gray-500 text-sm">No PDF files found matching your active criteria.</p>
                 </div>
+            </div>
+        </div>
+
+        <!-- Right Column: First Page Canvas Preview Panel View -->
+        <div id="preview-canvas-panel" class="w-full lg:w-80 flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+            <div class="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                <h3 class="font-semibold text-gray-800 text-sm tracking-wide">Page Preview</h3>
+                <span id="preview-active-badge" class="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">No Selection</span>
+            </div>
+            
+            <!-- Empty Panel Selection State View -->
+            <div id="preview-empty-view" class="flex-1 flex flex-col items-center justify-center p-6 text-center text-gray-400">
+                <svg class="w-10 h-10 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                <p class="text-xs">Click any document entry in the list view to render its first page in this panel.</p>
+            </div>
+
+            <!-- Active Document Preview Content Wrapper -->
+            <div id="preview-active-view" class="hidden flex-1 flex flex-col p-4 space-y-4 overflow-y-auto">
+                <div class="border-b border-gray-100 pb-2">
+                    <h4 id="preview-doc-name" class="text-xs font-semibold text-gray-900 truncate"></h4>
+                    <p id="preview-doc-folder" class="text-[11px] text-gray-400 truncate mt-0.5"></p>
+                </div>
+                
+                <!-- Target Presentation Canvas Wrapper Frame -->
+                <div id="canvas-container" class="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center p-2 min-h-[350px] relative">
+                    <div id="preview-loading" class="text-xs text-gray-500 hidden flex flex-col items-center">
+                        <svg class="animate-spin h-5 w-5 text-blue-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Rendering page 1...</span>
+                    </div>
+                    <canvas id="preview-page-canvas" class="shadow-sm max-w-full bg-white hidden rounded border border-gray-100"></canvas>
+                </div>
+
+                <button id="full-view-btn" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs rounded-lg transition shadow-sm focus:outline-none">
+                    Open Full Document Viewer
+                </button>
             </div>
         </div>
     </main>
@@ -194,8 +236,12 @@ INDEX_TEMPLATE = """
     </div>
 
     <script>
+        // Configure whitelisted library worker mapping globally
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
         let cachedDocuments = [];
         let currentTargetDir = "{{ default_dir }}";
+        let activeRowElement = null;
 
         async function fetchPDFs() {
             const statusLabel = document.getElementById('directory-status');
@@ -217,6 +263,7 @@ INDEX_TEMPLATE = """
                 populateFilters();
                 filterLibrary();
                 updateSystemStats();
+                resetCanvasPreviewPanel();
             } catch (err) {
                 console.error("Scanning synchronization failure:", err);
                 statusLabel.textContent = "Directory error / not found";
@@ -228,6 +275,7 @@ INDEX_TEMPLATE = """
                 emptyStateText.textContent = err.message;
                 document.getElementById('empty-state').classList.remove('hidden');
                 updateSystemStats();
+                resetCanvasPreviewPanel();
             }
         }
 
@@ -287,10 +335,17 @@ INDEX_TEMPLATE = """
 
             subset.forEach(doc => {
                 const row = document.createElement('tr');
-                row.className = "hover:bg-gray-50 transition";
+                row.className = "hover:bg-gray-50/80 transition cursor-pointer select-none";
+                
+                // Clicking anywhere on the list element item loads its side canvas preview
+                row.onclick = (e) => {
+                    if (e.target.closest('button')) return;
+                    openDocumentPreview(doc.relative_path, row);
+                };
+
                 row.innerHTML = `
                     <td class="px-6 py-4 max-w-xs md:max-w-md flex items-center space-x-3">
-                        <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-red-600 hover:text-red-800 transition focus:outline-none flex-shrink-0" title="Click to View PDF">
+                        <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-red-600 hover:text-red-800 transition focus:outline-none flex-shrink-0" title="Open full viewer modal">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                             </svg>
@@ -311,6 +366,86 @@ INDEX_TEMPLATE = """
             });
         }
 
+        // --- Side Panel Canvas Operations ---
+
+        function openDocumentPreview(relative_path, rowEl) {
+            const doc = cachedDocuments.find(d => d.relative_path === relative_path);
+            if (!doc) return;
+
+            // Update row item selection highlight
+            if (activeRowElement) {
+                activeRowElement.classList.remove('bg-blue-50/70', 'hover:bg-blue-50');
+            }
+            activeRowElement = rowEl;
+            activeRowElement.classList.add('bg-blue-50/70', 'hover:bg-blue-50');
+
+            // Shift states and assign summary values
+            document.getElementById('preview-active-badge').textContent = "Rendering";
+            document.getElementById('preview-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full";
+            document.getElementById('preview-doc-name').textContent = doc.name;
+            document.getElementById('preview-doc-folder').textContent = `Subfolder: ${doc.folder}`;
+            
+            document.getElementById('preview-empty-view').classList.add('hidden');
+            document.getElementById('preview-active-view').classList.remove('hidden');
+
+            document.getElementById('full-view-btn').onclick = () => {
+                launchPreview(encodeURIComponent(doc.relative_path));
+            };
+
+            // Stream document link into client-side canvas render thread
+            const targetStreamUrl = `/api/view?dir=${encodeURIComponent(currentTargetDir)}&path=${encodeURIComponent(doc.relative_path)}`;
+            renderFirstPageCanvas(targetStreamUrl);
+        }
+
+        function renderFirstPageCanvas(url) {
+            const canvas = document.getElementById('preview-page-canvas');
+            const ctx = canvas.getContext('2d');
+            const loadingEl = document.getElementById('preview-loading');
+            
+            loadingEl.classList.remove('hidden');
+            canvas.classList.add('hidden');
+            
+            pdfjsLib.getDocument(url).promise.then(function(pdf) {
+                return pdf.getPage(1);
+            }).then(function(page) {
+                const container = document.getElementById('canvas-container');
+                const containerWidth = container.clientWidth - 16; // Account for inner container margins
+                
+                const viewport = page.getViewport({ scale: 1.0 });
+                const scale = containerWidth / viewport.width;
+                const scaledViewport = page.getViewport({ scale: scale });
+
+                canvas.height = scaledViewport.height;
+                canvas.width = scaledViewport.width;
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: scaledViewport
+                };
+                
+                return page.render(renderContext).promise;
+            }).then(function() {
+                loadingEl.classList.add('hidden');
+                canvas.classList.remove('hidden');
+                document.getElementById('preview-active-badge').textContent = "Active Preview";
+                document.getElementById('preview-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-green-100 text-green-800 rounded-full";
+            }).catch(function(error) {
+                console.error('Error executing rendering pipeline thread:', error);
+                loadingEl.innerHTML = '<span class="text-red-500 font-medium">Failed to load preview canvas</span>';
+                document.getElementById('preview-active-badge').textContent = "Error";
+                document.getElementById('preview-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-red-100 text-red-800 rounded-full";
+            });
+        }
+
+        function resetCanvasPreviewPanel() {
+            document.getElementById('preview-empty-view').classList.remove('hidden');
+            document.getElementById('preview-active-view').classList.add('hidden');
+            document.getElementById('preview-active-badge').textContent = "No Selection";
+            document.getElementById('preview-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full";
+            activeRowElement = null;
+        }
+
+        // --- Standard View Modal Controls ---
         function launchPreview(encodedPath) {
             const decodedPath = decodeURIComponent(encodedPath);
             const fileName = decodedPath.split('/').pop();
