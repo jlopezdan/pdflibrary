@@ -154,7 +154,6 @@ INDEX_TEMPLATE = """
                             <th class="px-6 py-3 font-medium">Document Name</th>
                             <th class="px-6 py-3 font-medium hidden sm:table-cell">Subfolder</th>
                             <th class="px-6 py-3 font-medium">Size</th>
-                            <th class="px-6 py-3 font-medium text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="document-table-body" class="divide-y divide-gray-200 bg-white">
@@ -290,9 +289,16 @@ INDEX_TEMPLATE = """
                 const row = document.createElement('tr');
                 row.className = "hover:bg-gray-50 transition";
                 row.innerHTML = `
-                    <td class="px-6 py-4 max-w-xs md:max-w-md truncate">
-                        <div class="font-medium text-gray-900 truncate" title="${doc.name}">${doc.name}</div>
-                        <div class="text-xs text-gray-400 font-mono truncate" title="${doc.relative_path}">${doc.relative_path}</div>
+                    <td class="px-6 py-4 max-w-xs md:max-w-md flex items-center space-x-3">
+                        <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-red-600 hover:text-red-800 transition focus:outline-none flex-shrink-0" title="Click to View PDF">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                        </button>
+                        <div class="truncate">
+                            <div class="font-medium text-gray-900 truncate" title="${doc.name}">${doc.name}</div>
+                            <div class="text-xs text-gray-400 font-mono truncate" title="${doc.relative_path}">${doc.relative_path}</div>
+                        </div>
                     </td>
                     <td class="px-6 py-4 hidden sm:table-cell text-gray-500 whitespace-nowrap">
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
@@ -300,11 +306,6 @@ INDEX_TEMPLATE = """
                         </span>
                     </td>
                     <td class="px-6 py-4 text-gray-500 whitespace-nowrap">${doc.size_mb} MB</td>
-                    <td class="px-6 py-4 text-right whitespace-nowrap">
-                        <button onclick="launchPreview('${encodeURIComponent(doc.relative_path)}')" class="text-blue-600 hover:text-blue-900 text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-blue-50 transition">
-                            View
-                        </button>
-                    </td>
                 `;
                 tableBody.appendChild(row);
             });
