@@ -48,7 +48,6 @@ def scan_pdf_directory(base_dir):
     except Exception as e:
         return pdf_files, str(e)
                     
-    pdf_files.sort(key=lambda x: x["modified_time"], reverse=True)
     return pdf_files, None
 
 # --- HTML/CSS/JS Frontend Interface (Tailwind CSS UI) ---
@@ -60,8 +59,7 @@ INDEX_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Web Scanner Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Whitelisted Cloudflare resource for secure client-side PDF canvas rendering -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -110,9 +108,9 @@ INDEX_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Search & Filters -->
+            <!-- Search, Filters & Sorting Options -->
             <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Search & Filters</h2>
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Filters & Sorting</h2>
                 <div>
                     <label for="search-input" class="block text-xs font-medium text-gray-500 mb-1">Filename Search</label>
                     <input type="text" id="search-input" oninput="filterLibrary()" placeholder="Type to filter..." class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition">
@@ -121,6 +119,13 @@ INDEX_TEMPLATE = """
                     <label for="folder-filter" class="block text-xs font-medium text-gray-500 mb-1">Subfolder Filter</label>
                     <select id="folder-filter" onchange="filterLibrary()" class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition">
                         <option value="ALL">All Directories</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="sort-filter" class="block text-xs font-medium text-gray-500 mb-1">Sort Order (Descending)</label>
+                    <select id="sort-filter" onchange="filterLibrary()" class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition">
+                        <option value="time_desc">Last Modified Time</option>
+                        <option value="alpha_desc">Alphabetical (Z-A)</option>
                     </select>
                 </div>
             </div>
@@ -165,7 +170,7 @@ INDEX_TEMPLATE = """
                 
                 <div id="empty-state" class="hidden text-center py-12 px-4">
                     <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2-2H6a2 2 0 01-2-2m16 0V9a2 2 0 00-2-2H6a2 2 0 00-2 2v4.586a1 1 0 01-.293.707l-2.828 2.828a1 1 0 01-.707.293H2"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0a2 2 0 01-2 2H6a2 2 0 01-2-2m16 0V9a2 2 0 00-2-2H6a2 2 0 00-2 2v4.586a1 1 0 01-.293.707l-2.828 2.828a1 1 0 01-.707.293H2"></path>
                     </svg>
                     <p id="empty-state-text" class="text-gray-500 text-sm">No PDF files found matching your active criteria.</p>
                 </div>
@@ -236,7 +241,6 @@ INDEX_TEMPLATE = """
     </div>
 
     <script>
-        // Configure whitelisted library worker mapping globally
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
         let cachedDocuments = [];
@@ -313,15 +317,22 @@ INDEX_TEMPLATE = """
         function filterLibrary() {
             const query = document.getElementById('search-input').value.toLowerCase().trim();
             const chosenFolder = document.getElementById('folder-filter').value;
+            const sortOrder = document.getElementById('sort-filter').value;
             const tableBody = document.getElementById('document-table-body');
             const emptyState = document.getElementById('empty-state');
             const emptyStateText = document.getElementById('empty-state-text');
 
-            const subset = cachedDocuments.filter(doc => {
+            let subset = cachedDocuments.filter(doc => {
                 const matchesQuery = doc.name.toLowerCase().includes(query) || doc.relative_path.toLowerCase().includes(query);
                 const matchesFolder = (chosenFolder === 'ALL' || doc.folder === chosenFolder);
                 return matchesQuery && matchesFolder;
             });
+
+            if (sortOrder === 'alpha_desc') {
+                subset.sort((a, b) => b.name.localeCompare(a.name));
+            } else if (sortOrder === 'time_desc') {
+                subset.sort((a, b) => b.modified_time - a.modified_time);
+            }
 
             document.getElementById('showing-count').textContent = `Showing ${subset.length} documents`;
             tableBody.innerHTML = '';
@@ -337,7 +348,6 @@ INDEX_TEMPLATE = """
                 const row = document.createElement('tr');
                 row.className = "hover:bg-gray-50/80 transition cursor-pointer select-none";
                 
-                // Clicking anywhere on the list element item loads its side canvas preview
                 row.onclick = (e) => {
                     if (e.target.closest('button')) return;
                     openDocumentPreview(doc.relative_path, row);
@@ -366,20 +376,16 @@ INDEX_TEMPLATE = """
             });
         }
 
-        // --- Side Panel Canvas Operations ---
-
         function openDocumentPreview(relative_path, rowEl) {
             const doc = cachedDocuments.find(d => d.relative_path === relative_path);
             if (!doc) return;
 
-            // Update row item selection highlight
             if (activeRowElement) {
                 activeRowElement.classList.remove('bg-blue-50/70', 'hover:bg-blue-50');
             }
             activeRowElement = rowEl;
             activeRowElement.classList.add('bg-blue-50/70', 'hover:bg-blue-50');
 
-            // Shift states and assign summary values
             document.getElementById('preview-active-badge').textContent = "Rendering";
             document.getElementById('preview-active-badge').className = "text-[10px] font-medium px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full";
             document.getElementById('preview-doc-name').textContent = doc.name;
@@ -392,7 +398,6 @@ INDEX_TEMPLATE = """
                 launchPreview(encodeURIComponent(doc.relative_path));
             };
 
-            // Stream document link into client-side canvas render thread
             const targetStreamUrl = `/api/view?dir=${encodeURIComponent(currentTargetDir)}&path=${encodeURIComponent(doc.relative_path)}`;
             renderFirstPageCanvas(targetStreamUrl);
         }
@@ -409,7 +414,7 @@ INDEX_TEMPLATE = """
                 return pdf.getPage(1);
             }).then(function(page) {
                 const container = document.getElementById('canvas-container');
-                const containerWidth = container.clientWidth - 16; // Account for inner container margins
+                const containerWidth = container.clientWidth - 16;
                 
                 const viewport = page.getViewport({ scale: 1.0 });
                 const scale = containerWidth / viewport.width;
@@ -445,7 +450,6 @@ INDEX_TEMPLATE = """
             activeRowElement = null;
         }
 
-        // --- Standard View Modal Controls ---
         function launchPreview(encodedPath) {
             const decodedPath = decodeURIComponent(encodedPath);
             const fileName = decodedPath.split('/').pop();
@@ -487,17 +491,13 @@ def route_api_get_documents():
 
 @app.route('/api/view')
 def route_api_serve_pdf():
-    """
-    Safely resolves, maps, and serves individual PDF binary objects 
-    relative to the dynamically passed base directory parameter.
-    """
+    """Safely serves isolated PDF binaries within directory bounds constraints."""
     base_dir = request.args.get('dir', DEFAULT_DIRECTORY)
     relative_target_path = request.args.get('path', '')
     
     base_dir = os.path.abspath(base_dir)
     safe_path = os.path.normpath(os.path.join(base_dir, relative_target_path))
     
-    # Path security validation: block path traversal outside of the target base folder
     if not safe_path.startswith(base_dir):
         abort(403, "Access to requested path resource is restricted.")
         
