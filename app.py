@@ -6,8 +6,34 @@ from flask import Flask, render_template_string, jsonify, request, send_file, ab
 # Initialize Flask application
 app = Flask(__name__)
 
-# Configure the default target directory to scan
-DEFAULT_DIRECTORY = os.path.abspath(os.environ.get("PDF_SCAN_DIR", os.getcwd()))
+# Resolve the directory of the executing script to place the local configuration file
+SCRIPT_DIRECTORY = os.path.dirname(os.path.abspath(__file__ if '__file__' in locals() else sys.argv[0]))
+CONFIG_FILE_PATH = os.path.join(SCRIPT_DIRECTORY, "config.txt")
+
+def get_saved_directory():
+    """
+    Reads the persistent base directory path from the local configuration file.
+    Falls back to environment variables or the current working directory if missing or invalid.
+    """
+    if os.path.exists(CONFIG_FILE_PATH):
+        try:
+            with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+                saved_path = f.read().strip()
+                if saved_path and os.path.exists(saved_path) and os.path.isdir(saved_path):
+                    return os.path.abspath(saved_path)
+        except Exception:
+            pass
+    return os.path.abspath(os.environ.get("PDF_SCAN_DIR", os.getcwd()))
+
+def save_directory_path(path):
+    """
+    Writes the verified base directory path to a local file for persistent caching.
+    """
+    try:
+        with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write(os.path.abspath(path))
+    except Exception as e:
+        print(f"[*] Warning: Failed to preserve path tracking state locally: {e}")
 
 # Allowed extensions for the scanner
 SUPPORTED_EXTENSIONS = {'.pdf'}
@@ -59,7 +85,7 @@ INDEX_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Web Scanner Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -260,7 +286,7 @@ INDEX_TEMPLATE = """
                     throw new Error(data.error || "Failed to scan target path directory.");
                 }
                 
-                statusLabel.textContent = "Active path validated";
+                statusLabel.textContent = "Active path validated & saved";
                 statusLabel.className = "text-xs mt-1 text-green-600 font-medium";
                 
                 cachedDocuments = data.files || [];
@@ -475,24 +501,28 @@ INDEX_TEMPLATE = """
 @app.route('/')
 def route_dashboard_index():
     """Serves the central web application UI container."""
-    return render_template_string(INDEX_TEMPLATE, default_dir=DEFAULT_DIRECTORY)
+    return render_template_string(INDEX_TEMPLATE, default_dir=get_saved_directory())
 
 @app.route('/api/documents')
 def route_api_get_documents():
     """Exposes structured metadata array of scanned records for a dynamic base directory."""
-    target_dir = request.args.get('dir', DEFAULT_DIRECTORY)
+    default_dir = get_saved_directory()
+    target_dir = request.args.get('dir', default_dir)
     target_dir = os.path.abspath(target_dir)
     
     files, error = scan_pdf_directory(target_dir)
     if error:
         return jsonify({"files": [], "error": error}), 400
         
+    # Persist the successfully validated path locally inside the configuration file
+    save_directory_path(target_dir)
     return jsonify({"files": files, "error": None})
 
 @app.route('/api/view')
 def route_api_serve_pdf():
     """Safely serves isolated PDF binaries within directory bounds constraints."""
-    base_dir = request.args.get('dir', DEFAULT_DIRECTORY)
+    default_dir = get_saved_directory()
+    base_dir = request.args.get('dir', default_dir)
     relative_target_path = request.args.get('path', '')
     
     base_dir = os.path.abspath(base_dir)
@@ -511,7 +541,8 @@ def route_api_serve_pdf():
     return send_file(safe_path, mimetype=mime_type)
 
 if __name__ == '__main__':
+    current_active_dir = get_saved_directory()
     print(f"[*] Starting Local Web Document Server...")
-    print(f"[*] Default Directory Context Path: {DEFAULT_DIRECTORY}")
+    print(f"[*] Default Directory Context Path: {current_active_dir}")
     print(f"[*] Serving locally at: http://127.0.0.1:5000")
     app.run(host='127.0.0.1', port=5000, debug=True)
